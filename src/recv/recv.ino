@@ -107,9 +107,9 @@ bool decode_ir() {
   packet.address_ext = read_byte(BYTE_POSITION(2));
   packet.command = read_byte(BYTE_POSITION(3));
 
-  byte inv_command = read_byte(BYTE_POSITION(4));
+  byte command_inv = read_byte(BYTE_POSITION(4));
   
-  if (!((packet.command ^ inv_command) & inv_command)) {
+  if (!((packet.command ^ command_inv) & command_inv)) {
     Serial.println("Could not validate command");
     return false;
   }
