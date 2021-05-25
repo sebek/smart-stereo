@@ -25,11 +25,21 @@ SOFTWARE.
 #define LEEWAY 0.5
 #define MAX_READ 10000
 
+#define BYTE_POSITION(x) (3 + (16 * (x - 1)))
+
 int inPin = 2;
 
 volatile unsigned long last_interrupt = 0;
 volatile int num_interrupts = 0;
 volatile unsigned long pin_interrupts[300];
+
+typedef struct packet {
+  byte address;
+  byte address_ext;
+  byte command;
+} Packet;
+
+Packet packet = { .address = 0x0, .address_ext = 0x0, .command = 0x0 };
 
 void print_hex(int num, int precision) {
       char tmp[16];
@@ -63,56 +73,61 @@ float ir_duration(int from) {
 
 byte read_byte(int start) {
   byte my_byte = 0x0;
-  int bitnum = 0;
+  int bit_count = 0;
   
-  for (int i = start; i < (start + (8 * 2)); i += 2) {
+  for (int i = start; i < (start + 16); i += 2) {
     float duration = ir_duration(i);
-    
+
+    // Is a one (1), zeroes are already set 
     if (with_leeway(duration, 2.25)) {
-      my_byte |= 1 << bitnum;
+      my_byte |= 1 << bit_count;
     }
 
-    bitnum++;
+    bit_count++;
   }
     
   return my_byte;
 }
 
-void decode_ir() {
+bool decode_ir() {
   float start = ir_duration(0);
   Serial.print("Startbit: " + String(start) + " ms");
 
   if (with_leeway(start, 11.3)) {
     Serial.print(" - Is Repeating\n\n");
-    return;
+    return false;
   } else if (!with_leeway(start, 13.5)) {
     Serial.print(" - Not a valid startbit\n\n");
-    return; 
+    return false;
   }
 
   Serial.print(" - Startbit correct\n");
 
-  byte address = read_byte(3);
-  byte ext_address = read_byte(19);
+  packet.address = read_byte(BYTE_POSITION(1));
+  packet.address_ext = read_byte(BYTE_POSITION(2));
+  packet.command = read_byte(BYTE_POSITION(3));
 
-  byte command = read_byte(35);
-  byte inv_command = read_byte(51);
+  byte inv_command = read_byte(BYTE_POSITION(4));
   
-  if (!((command ^ inv_command) & inv_command)) {
+  if (!((packet.command ^ inv_command) & inv_command)) {
     Serial.println("Could not validate command");
-    return;
+    return false;
   }
 
-  Serial.print("Address: ");
-  print_hex(address, 2);
-  Serial.print(" ");
-  print_hex(ext_address, 2);
-  Serial.print(", ");
+  return true;
+}
 
-  Serial.print("Command: ");
-  print_hex(command, 2);
-  Serial.println("");
-  Serial.println("");  
+void print_packet() {
+    Serial.print("Address: ");
+    print_hex(packet.address, 2);
+    Serial.print(" ");
+    print_hex(packet.address_ext, 2);
+    Serial.print(", ");
+
+    Serial.print("Command: ");
+    print_hex(packet.command, 2);
+    Serial.println("");
+    Serial.println("");  
 }
 
 void reset() {
@@ -128,7 +143,10 @@ void setup() {
 
 void loop() {
   if (num_interrupts > 0 && (micros() - last_interrupt) > MAX_READ) {
-    decode_ir();
+    if (decode_ir()) {
+      print_packet();
+    }
+    
     reset();
   }
 
