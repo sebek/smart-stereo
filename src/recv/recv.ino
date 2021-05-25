@@ -26,6 +26,9 @@ SOFTWARE.
 #define MAX_READ 10000
 
 #define BYTE_POSITION(x) (3 + (16 * (x - 1)))
+#define WITH_LEEWAY(val, compare) ((val - LEEWAY) <= compare && (val + LEEWAY) >= compare)
+#define IR_DURATION(from) (((pin_interrupts[from + 1] - pin_interrupts[from]) + \
+          (pin_interrupts[from + 2] - pin_interrupts[from + 1])) / 1000.000)
 
 int inPin = 2;
 
@@ -58,28 +61,15 @@ void handle_interrupt() {
   last_interrupt = now;
 }
 
-bool with_leeway(float val, float compare_with) {
-  float min = val - LEEWAY;
-  float max = val + LEEWAY;
-
-  return min <= compare_with && max >= compare_with;
-}
-
-float ir_duration(int from) {
-  return ((pin_interrupts[from + 1] - pin_interrupts[from]) +
-          (pin_interrupts[from + 2] - pin_interrupts[from + 1])) /
-         1000.000;
-}
-
 byte read_byte(int start) {
   byte my_byte = 0x0;
   int bit_count = 0;
   
   for (int i = start; i < (start + 16); i += 2) {
-    float duration = ir_duration(i);
+    float duration = IR_DURATION(i);
 
     // Is a one (1), zeroes are already set 
-    if (with_leeway(duration, 2.25)) {
+    if (WITH_LEEWAY(duration, 2.25)) {
       my_byte |= 1 << bit_count;
     }
 
@@ -90,13 +80,13 @@ byte read_byte(int start) {
 }
 
 bool decode_ir() {
-  float start = ir_duration(0);
+  float start = IR_DURATION(0);
   Serial.print("Startbit: " + String(start) + " ms");
 
-  if (with_leeway(start, 11.3)) {
+  if (WITH_LEEWAY(start, 11.3)) {
     Serial.print(" - Is Repeating\n\n");
     return false;
-  } else if (!with_leeway(start, 13.5)) {
+  } else if (!WITH_LEEWAY(start, 13.5)) {
     Serial.print(" - Not a valid startbit\n\n");
     return false;
   }
@@ -146,7 +136,7 @@ void loop() {
     if (decode_ir()) {
       print_packet();
     }
-    
+
     reset();
   }
 
